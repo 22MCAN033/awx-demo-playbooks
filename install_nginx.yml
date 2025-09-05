@@ -11,14 +11,17 @@
         update_cache: yes
         cache_valid_time: 3600
 
-    - name: Ensure Python3, pip and dependencies are installed
+    - name: Ensure Python3.8, pip and dependencies are installed
       apt:
         name:
-          - python3
+          - python3.8
+          - python3.8-dev
+          - python3.8-distutils
           - python3-pip
           - python3-setuptools
           - python3-wheel
           - python3-six
+          - python3-apt  # Added for Ansible apt module support
         state: present
 
     - name: Install Nginx
@@ -32,3 +35,21 @@
         name: nginx
         state: started
         enabled: yes
+
+    - name: Check if Nginx is accessible
+      uri:
+        url: http://localhost
+        method: GET
+        status_code: 200
+      register: nginx_status
+      ignore_errors: yes
+
+    - name: Display Nginx status
+      debug:
+        msg: "Nginx is {{ 'running' if nginx_status.status == 200 else 'not accessible' }}"
+
+    - name: Allow Nginx through UFW firewall (if UFW is enabled)
+      ufw:
+        rule: allow
+        name: 'Nginx Full'
+      ignore_errors: yes
