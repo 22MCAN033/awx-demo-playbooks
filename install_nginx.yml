@@ -2,77 +2,59 @@
 - name: Bootstrap target server and install Nginx
   hosts: all
   become: yes
-  gather_facts: no  # Disable initial fact gathering
+  gather_facts: yes   # normal fact gathering, system python hi chalega
 
   vars:
-    venv_python: /home/ubuntu/py38-venv/bin/python  # your venv interpreter
-    system_python: /usr/bin/python3                  # system Python for apt module
+    ansible_python_interpreter: /usr/bin/python3   # system Python for all tasks
 
   tasks:
-    - name: Test Python 3.8 venv connectivity
-      raw: "{{ venv_python }} --version"
+    - name: Test Python connectivity
+      command: "{{ ansible_python_interpreter }} --version"
       register: python_version
       changed_when: false
 
-    - name: Display Python 3.8 venv version
+    - name: Display Python version
       debug:
         var: python_version.stdout
 
-    - name: Gather facts with system Python
-      setup:
-      vars:
-        ansible_python_interpreter: "{{ system_python }}"
-
-    - name: Update apt cache (system Python)
+    - name: Update apt cache
       apt:
         update_cache: yes
-      vars:
-        ansible_python_interpreter: "{{ system_python }}"
 
-    - name: Install Nginx (system Python)
+    - name: Install Nginx
       apt:
         name: nginx
         state: present
         update_cache: yes
-      vars:
-        ansible_python_interpreter: "{{ system_python }}"
 
-    - name: Ensure Nginx service is running and enabled (venv Python is fine)
+    - name: Ensure Nginx service is running and enabled
       service:
         name: nginx
         state: started
         enabled: yes
-      vars:
-        ansible_python_interpreter: "{{ venv_python }}"
 
-    - name: Create test HTML file (venv Python)
+    - name: Create test HTML file
       copy:
         content: "<html><body><h1>Hello from AWX!</h1></body></html>"
         dest: /var/www/html/index.html
         owner: www-data
         group: www-data
         mode: '0644'
-      vars:
-        ansible_python_interpreter: "{{ venv_python }}"
 
-    - name: Check if Nginx is accessible (venv Python)
+    - name: Check if Nginx is accessible
       uri:
         url: http://localhost
         method: GET
         status_code: 200
       register: nginx_status
       ignore_errors: yes
-      vars:
-        ansible_python_interpreter: "{{ venv_python }}"
 
     - name: Display Nginx status
       debug:
         msg: "Nginx is {{ 'running' if nginx_status.status == 200 else 'not accessible' }}"
 
-    - name: Allow Nginx through UFW firewall (venv Python)
+    - name: Allow Nginx through UFW firewall
       ufw:
         rule: allow
         name: 'Nginx Full'
       ignore_errors: yes
-      vars:
-        ansible_python_interpreter: "{{ venv_python }}"
