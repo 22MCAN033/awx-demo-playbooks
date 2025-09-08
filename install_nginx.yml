@@ -8,9 +8,11 @@
     ansible_python_interpreter: /usr/bin/python3
     app_repo: "https://github.com/22MCAN033/chat-app-react-nodejs-kadel.git"
     app_dir: "/opt/chat-app"
-    node_version: "18"  # change if needed
-    frontend_dir: "public"  # your React frontend directory
-    backend_dir: "server"   # your Node.js backend directory
+    node_version: "18"
+    frontend_dir: "public"
+    backend_dir: "server"
+    swap_file: "/swapfile"
+    swap_size: "2G"
 
   tasks:
     - name: Test Python connectivity
@@ -33,6 +35,7 @@
           - git
           - curl
           - ufw
+          - build-essential
         state: present
         update_cache: yes
 
@@ -66,10 +69,37 @@
         path: "{{ app_dir }}/{{ frontend_dir }}"
         production: no
 
+    - name: Create swap file for low-memory EC2
+      shell: |
+        fallocate -l {{ swap_size }} {{ swap_file }}
+        chmod 600 {{ swap_file }}
+        mkswap {{ swap_file }}
+        swapon {{ swap_file }}
+      args:
+        creates: "{{ swap_file }}"
+
+    - name: Update browserslist DB
+      shell: npx browserslist@latest --update-db
+      args:
+        chdir: "{{ app_dir }}/{{ frontend_dir }}"
+
     - name: Build React frontend
       shell: npm run build
       args:
         chdir: "{{ app_dir }}/{{ frontend_dir }}"
+
+    - name: Clean Nginx root
+      file:
+        path: /var/www/html
+        state: absent
+
+    - name: Recreate Nginx root
+      file:
+        path: /var/www/html
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
 
     - name: Copy frontend build to Nginx root
       copy:
