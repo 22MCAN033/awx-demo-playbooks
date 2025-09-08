@@ -1,118 +1,43 @@
 ---
-- name: Deploy Chat App on Target Server
-  hosts: all
+- name: Deploy Simple Calculator Application
+  hosts: webserver
   become: yes
-  gather_facts: yes
 
   vars:
-    ansible_python_interpreter: /usr/bin/python3
-    app_repo: "https://github.com/22MCAN033/chat-app-react-nodejs-kadel.git"
-    app_dir: "/opt/chat-app"
-    node_version: "18"
-    frontend_dir: "public"
-    backend_dir: "server"
-    backend_entry: "index.js"   # 👈 abhi ye use hoga
-    backend_port: "5000"        # 👈 tumhare backend ka port (index.js me check karna)
+    app_repo: "https://github.com/22MCAN033/Simple-Calculator.git"
+    app_dest: "/var/www/simple-calculator"
 
   tasks:
-    - name: Install required packages
+    - name: Ensure Nginx is installed
       apt:
-        name:
-          - nginx
-          - git
-          - curl
-          - build-essential
+        name: nginx
         state: present
         update_cache: yes
 
-    - name: Install Node.js
-      shell: |
-        curl -fsSL https://deb.nodesource.com/setup_{{ node_version }}.x | bash -
-        apt-get install -y nodejs
-      args:
-        executable: /bin/bash
+    - name: Ensure Git is installed
+      apt:
+        name: git
+        state: present
+        update_cache: yes
 
-    - name: Clone the chat app repository
+    - name: Clone calculator repo
       git:
         repo: "{{ app_repo }}"
-        dest: "{{ app_dir }}"
-        version: "master"
+        dest: "{{ app_dest }}"
+        version: main
         force: yes
 
-    - name: Install backend dependencies
-      npm:
-        path: "{{ app_dir }}/{{ backend_dir }}"
-
-    - name: Install frontend dependencies and build
-      shell: |
-        npm install
-        npm run build
-      args:
-        chdir: "{{ app_dir }}/{{ frontend_dir }}"
-
-    - name: Copy frontend build to Nginx root
+    - name: Copy files to Nginx web root
       copy:
-        src: "{{ app_dir }}/{{ frontend_dir }}/build/"
-        dest: /var/www/chat-app/
+        src: "{{ app_dest }}/"
+        dest: "/var/www/html/"
         owner: www-data
         group: www-data
-        mode: '0755'
-        remote_src: yes
+        mode: '0644'
+      notify: Restart nginx
 
-    - name: Configure Nginx for chat app
-      copy:
-        dest: /etc/nginx/sites-available/chat-app
-        content: |
-          server {
-              listen 80;
-              server_name _;
-
-              root /var/www/chat-app;
-              index index.html;
-
-              location / {
-                  try_files $uri /index.html;
-              }
-
-              location /api/ {
-                  proxy_pass http://localhost:{{ backend_port }}/;
-                  proxy_http_version 1.1;
-                  proxy_set_header Upgrade $http_upgrade;
-                  proxy_set_header Connection 'upgrade';
-                  proxy_set_header Host $host;
-                  proxy_cache_bypass $http_upgrade;
-              }
-          }
-
-    - name: Enable chat-app site
-      file:
-        src: /etc/nginx/sites-available/chat-app
-        dest: /etc/nginx/sites-enabled/chat-app
-        state: link
-        force: yes
-
-    - name: Remove default Nginx config
-      file:
-        path: /etc/nginx/sites-enabled/default
-        state: absent
-
-    - name: Restart Nginx
+  handlers:
+    - name: Restart nginx
       service:
         name: nginx
         state: restarted
-
-    - name: Install pm2 globally
-      npm:
-        name: pm2
-        global: yes
-
-    - name: Start backend with pm2
-      shell: pm2 start {{ backend_entry }} --name chat-backend
-      args:
-        chdir: "{{ app_dir }}/{{ backend_dir }}"
-
-    - name: Save pm2 process list
-      shell: pm2 save
-
-    - name: Enable pm2 startup
-      shell: pm2 startup systemd -u ubuntu --hp /home/ubuntu
