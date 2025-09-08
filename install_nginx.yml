@@ -21,12 +21,6 @@
         state: present
         update_cache: yes
 
-    - name: Ensure rsync is installed
-      apt:
-        name: rsync
-        state: present
-        update_cache: yes
-
     - name: Clone calculator repo
       git:
         repo: "{{ app_repo }}"
@@ -34,21 +28,11 @@
         version: main
         force: yes
 
-    - name: Synchronize calculator app to Nginx root
-      synchronize:
-        src: "{{ app_dest }}/"
-        dest: "{{ web_root }}/"
-        recursive: yes
-        delete: yes
+    - name: Copy calculator app to Nginx web root
+      shell: |
+        cp -r {{ app_dest }}/* {{ web_root }}/
+        chown -R www-data:www-data {{ web_root }}
       notify: Restart nginx
-
-    - name: Set ownership of web root
-      file:
-        path: "{{ web_root }}"
-        owner: www-data
-        group: www-data
-        state: directory
-        recurse: yes
 
     - name: Ensure Nginx is running and enabled
       service:
