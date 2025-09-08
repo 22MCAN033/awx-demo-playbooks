@@ -13,6 +13,7 @@
     backend_dir: "server"
     swap_file: "/swapfile"
     swap_size: "2G"
+    backend_port: "5003"   # 👈 update this if your backend runs on 5000 instead
 
   tasks:
     - name: Test Python connectivity
@@ -110,7 +111,7 @@
         mode: '0755'
         remote_src: yes
 
-    - name: Configure Nginx for reverse proxy
+    - name: Configure Nginx for chat app
       copy:
         dest: /etc/nginx/sites-available/chat-app
         content: |
@@ -122,7 +123,7 @@
               index index.html index.htm;
 
               location /api/ {
-                  proxy_pass http://localhost:5000/;
+                  proxy_pass http://localhost:{{ backend_port }}/;
                   proxy_http_version 1.1;
                   proxy_set_header Upgrade $http_upgrade;
                   proxy_set_header Connection 'upgrade';
@@ -171,6 +172,9 @@
 
     - name: Save pm2 process list for startup
       shell: pm2 save
+
+    - name: Setup pm2 startup script
+      shell: pm2 startup systemd -u ubuntu --hp /home/ubuntu
 
   handlers:
     - name: Reload Nginx
