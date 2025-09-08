@@ -11,31 +11,16 @@
     node_version: "18"
     frontend_dir: "public"
     backend_dir: "server"
-    swap_file: "/swapfile"
-    swap_size: "2G"
-    backend_port: "5003"   # 👈 update this if your backend runs on 5000 instead
+    backend_entry: "index.js"   # 👈 abhi ye use hoga
+    backend_port: "5000"        # 👈 tumhare backend ka port (index.js me check karna)
 
   tasks:
-    - name: Test Python connectivity
-      command: "{{ ansible_python_interpreter }} --version"
-      register: python_version
-      changed_when: false
-
-    - name: Display Python version
-      debug:
-        var: python_version.stdout
-
-    - name: Update apt cache
-      apt:
-        update_cache: yes
-
     - name: Install required packages
       apt:
         name:
           - nginx
           - git
           - curl
-          - ufw
           - build-essential
         state: present
         update_cache: yes
@@ -47,12 +32,6 @@
       args:
         executable: /bin/bash
 
-    - name: Ensure Nginx service is running and enabled
-      service:
-        name: nginx
-        state: started
-        enabled: yes
-
     - name: Clone the chat app repository
       git:
         repo: "{{ app_repo }}"
@@ -63,49 +42,18 @@
     - name: Install backend dependencies
       npm:
         path: "{{ app_dir }}/{{ backend_dir }}"
-        production: no
 
-    - name: Install frontend dependencies
-      npm:
-        path: "{{ app_dir }}/{{ frontend_dir }}"
-        production: no
-
-    - name: Create swap file for low-memory EC2
+    - name: Install frontend dependencies and build
       shell: |
-        fallocate -l {{ swap_size }} {{ swap_file }}
-        chmod 600 {{ swap_file }}
-        mkswap {{ swap_file }}
-        swapon {{ swap_file }}
-      args:
-        creates: "{{ swap_file }}"
-
-    - name: Update browserslist DB
-      shell: npx browserslist@latest --update-db
+        npm install
+        npm run build
       args:
         chdir: "{{ app_dir }}/{{ frontend_dir }}"
-
-    - name: Build React frontend
-      shell: npm run build
-      args:
-        chdir: "{{ app_dir }}/{{ frontend_dir }}"
-
-    - name: Clean Nginx root
-      file:
-        path: /var/www/html
-        state: absent
-
-    - name: Recreate Nginx root
-      file:
-        path: /var/www/html
-        state: directory
-        owner: www-data
-        group: www-data
-        mode: '0755'
 
     - name: Copy frontend build to Nginx root
       copy:
         src: "{{ app_dir }}/{{ frontend_dir }}/build/"
-        dest: "/var/www/html/"
+        dest: /var/www/chat-app/
         owner: www-data
         group: www-data
         mode: '0755'
@@ -119,8 +67,12 @@
               listen 80;
               server_name _;
 
-              root /var/www/html;
-              index index.html index.htm;
+              root /var/www/chat-app;
+              index index.html;
+
+              location / {
+                  try_files $uri /index.html;
+              }
 
               location /api/ {
                   proxy_pass http://localhost:{{ backend_port }}/;
@@ -130,34 +82,24 @@
                   proxy_set_header Host $host;
                   proxy_cache_bypass $http_upgrade;
               }
-
-              location / {
-                  try_files $uri /index.html;
-              }
           }
-      notify:
-        - Reload Nginx
 
-    - name: Enable chat-app Nginx config
+    - name: Enable chat-app site
       file:
         src: /etc/nginx/sites-available/chat-app
         dest: /etc/nginx/sites-enabled/chat-app
         state: link
-      notify:
-        - Reload Nginx
+        force: yes
 
     - name: Remove default Nginx config
       file:
         path: /etc/nginx/sites-enabled/default
         state: absent
-      notify:
-        - Reload Nginx
 
-    - name: Allow Nginx through UFW firewall
-      ufw:
-        rule: allow
-        name: 'Nginx Full'
-      ignore_errors: yes
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted
 
     - name: Install pm2 globally
       npm:
@@ -165,19 +107,12 @@
         global: yes
 
     - name: Start backend with pm2
-      shell: pm2 start app.js --name chat-backend
+      shell: pm2 start {{ backend_entry }} --name chat-backend
       args:
         chdir: "{{ app_dir }}/{{ backend_dir }}"
-      register: pm2_start
 
-    - name: Save pm2 process list for startup
+    - name: Save pm2 process list
       shell: pm2 save
 
-    - name: Setup pm2 startup script
+    - name: Enable pm2 startup
       shell: pm2 startup systemd -u ubuntu --hp /home/ubuntu
-
-  handlers:
-    - name: Reload Nginx
-      service:
-        name: nginx
-        state: reloaded
