@@ -6,6 +6,7 @@
   vars:
     app_repo: "https://github.com/22MCAN033/Simple-Calculator.git"
     app_dest: "/var/www/simple-calculator"
+    web_root: "/var/www/html"
 
   tasks:
     - name: Ensure Nginx is installed
@@ -20,6 +21,12 @@
         state: present
         update_cache: yes
 
+    - name: Ensure rsync is installed
+      apt:
+        name: rsync
+        state: present
+        update_cache: yes
+
     - name: Clone calculator repo
       git:
         repo: "{{ app_repo }}"
@@ -27,14 +34,27 @@
         version: main
         force: yes
 
-    - name: Copy files to Nginx web root
-      copy:
+    - name: Synchronize calculator app to Nginx root
+      synchronize:
         src: "{{ app_dest }}/"
-        dest: "/var/www/html/"
+        dest: "{{ web_root }}/"
+        recursive: yes
+        delete: yes
+      notify: Restart nginx
+
+    - name: Set ownership of web root
+      file:
+        path: "{{ web_root }}"
         owner: www-data
         group: www-data
-        mode: '0644'
-      notify: Restart nginx
+        state: directory
+        recurse: yes
+
+    - name: Ensure Nginx is running and enabled
+      service:
+        name: nginx
+        state: started
+        enabled: yes
 
   handlers:
     - name: Restart nginx
