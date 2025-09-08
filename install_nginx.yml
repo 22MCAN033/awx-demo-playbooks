@@ -53,7 +53,7 @@
       git:
         repo: "{{ app_repo }}"
         dest: "{{ app_dir }}"
-        version: "main"
+        version: "master"
         force: yes
 
     - name: Install backend dependencies
